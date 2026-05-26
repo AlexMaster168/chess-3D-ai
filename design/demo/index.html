@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@chess-ai/design — demo</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --panel: rgba(16, 18, 24, 0.75);
+        --accent: #66ddff;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0; padding: 0; height: 100%; width: 100%;
+        background: #06080c; color: #d8dde6;
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        overflow: hidden;
+      }
+      #app {
+        position: fixed; inset: 0;
+      }
+      #stage {
+        position: absolute; inset: 0;
+      }
+      #panel {
+        position: absolute; top: 16px; left: 16px;
+        background: var(--panel);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 14px;
+        padding: 14px 16px;
+        max-width: 340px;
+        font-size: 13px;
+        line-height: 1.5;
+        box-shadow: 0 8px 30px rgba(0,0,0,0.45);
+      }
+      h1 { margin: 0 0 6px; font-size: 16px; letter-spacing: 0.4px; color: var(--accent); }
+      kbd {
+        display: inline-block;
+        background: #1c2030;
+        border: 1px solid #2c3142;
+        border-bottom-color: #181b26;
+        border-radius: 4px;
+        padding: 0 6px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 11px;
+      }
+      .row { display: flex; justify-content: space-between; gap: 8px; }
+      .muted { color: #8a93a6; }
+      #log {
+        position: absolute; bottom: 16px; left: 16px;
+        background: var(--panel);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 12px;
+        padding: 10px 12px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px;
+        max-width: 360px;
+        max-height: 180px;
+        overflow: auto;
+        white-space: pre-wrap;
+        opacity: 0.92;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <div id="stage"></div>
+      <div id="panel">
+        <h1>@chess-ai/design demo</h1>
+        <div class="muted">Procedurally-built 3D chess board with cinematic animations.</div>
+        <hr style="border:none;border-top:1px solid rgba(255,255,255,0.08);margin:10px 0" />
+        <div class="row"><span><kbd>1</kbd> Classic theme</span></div>
+        <div class="row"><span><kbd>2</kbd> Neon theme</span></div>
+        <div class="row"><span><kbd>3</kbd> Glass theme</span></div>
+        <div class="row"><span><kbd>R</kbd> Reset to starting FEN</span></div>
+        <div class="row"><span><kbd>M</kbd> Sample move (e2e4 / e7e5)</span></div>
+        <div class="row"><span><kbd>C</kbd> Capture demo</span></div>
+        <div class="row"><span><kbd>K</kbd> Check pulse on king</span></div>
+        <div class="row"><span><kbd>X</kbd> Checkmate cinematic</span></div>
+        <div class="row"><span><kbd>S</kbd> Castling (kingside)</span></div>
+        <div class="row"><span><kbd>P</kbd> Promotion (white pawn to queen)</span></div>
+        <div class="row"><span><kbd>H</kbd> Highlight legal squares</span></div>
+        <div class="row"><span><kbd>L</kbd> Highlight last-move</span></div>
+        <div class="row"><span><kbd>SHIFT+S</kbd> Cycle speed (slow/normal/fast)</span></div>
+      </div>
+      <div id="log"></div>
+    </div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

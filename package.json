@@ -1,0 +1,27 @@
+{
+  "name": "chess-ai",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Chess AI monorepo: 3D design, Vue3 frontend, Express backend, TS chess engine.",
+  "workspaces": [
+    "design",
+    "ai-engine",
+    "backend",
+    "frontend",
+    "orchestrator"
+  ],
+  "scripts": {
+    "dev": "concurrently --names backend,frontend --prefix-colors blue,green --kill-others-on-fail \"npm:dev:backend\" \"npm:dev:frontend\"",
+    "dev:backend": "npm run dev --workspace=@chess-ai/backend",
+    "dev:frontend": "npm run dev --workspace=@chess-ai/frontend",
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm test --workspaces --if-present",
+    "start": "npm run dev"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
