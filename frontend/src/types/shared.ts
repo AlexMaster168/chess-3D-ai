@@ -13,8 +13,15 @@ export type Difficulty =
 
 export type BoardTheme = 'classic' | 'neon' | 'glass';
 export type AnimationSpeed = 'slow' | 'normal' | 'fast';
+export type BattleMode = 'classic' | 'battle-chess';
 export type Color = 'w' | 'b';
 export type GameResult = '1-0' | '0-1' | '1/2-1/2';
+export type GameMode = 'ai' | 'hotseat';
+
+export interface MoveValidator {
+  isLegal(from: string, to: string): boolean;
+  getLegalMoves(square: string): string[];
+}
 
 export interface StructuredMove {
   from: string;
@@ -96,6 +103,10 @@ export interface ChessBoard3D {
   on(event: 'move', cb: (m: StructuredMove) => void): void;
   on(event: 'animationEnd', cb: (kind: string) => void): void;
   playEffect(kind: 'capture' | 'check' | 'checkmate' | 'castle'): void;
+  setBattleMode(mode: BattleMode): void;
+  setMoveValidator(validator: MoveValidator | null): void;
+  flipBoard(): void;
+  isFlipped(): boolean;
 }
 
 // --- Worker protocol (frontend-internal) ---

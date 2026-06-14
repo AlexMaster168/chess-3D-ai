@@ -2,6 +2,7 @@
 import { RouterLink, RouterView } from 'vue-router';
 import { useStore } from './store';
 import { computed } from 'vue';
+import { t } from './i18n';
 
 const store = useStore();
 const player = computed(() => store.state.player.current);
@@ -10,16 +11,17 @@ const player = computed(() => store.state.player.current);
 <template>
   <div class="app-shell">
     <header class="app-header">
-      <RouterLink to="/" class="brand">Chess AI</RouterLink>
+      <RouterLink to="/" class="brand">{{ t('app.title') }}</RouterLink>
       <nav class="nav">
-        <RouterLink to="/">Lobby</RouterLink>
-        <RouterLink to="/play">Play</RouterLink>
+        <RouterLink to="/">{{ t('lobby.newGame') }}</RouterLink>
+        <RouterLink to="/play">{{ t('lobby.startGame') }}</RouterLink>
         <RouterLink to="/history">History</RouterLink>
         <RouterLink
           v-if="player"
           :to="`/analytics/${player.id}`"
         >Analytics</RouterLink>
         <RouterLink to="/leaderboard">Leaderboard</RouterLink>
+        <RouterLink to="/settings">⚙️</RouterLink>
       </nav>
       <div class="player-pill" v-if="player">
         <span>{{ player.name }}</span>

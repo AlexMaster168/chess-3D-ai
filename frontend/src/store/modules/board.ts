@@ -1,10 +1,11 @@
 import { Module } from 'vuex';
 import type { RootState } from '../index';
-import type { AnimationSpeed, BoardTheme } from '@/types/shared';
+import type { AnimationSpeed, BoardTheme, BattleMode } from '@/types/shared';
 
 export interface BoardState {
   theme: BoardTheme;
   animationSpeed: AnimationSpeed;
+  battleMode: BattleMode;
   highlightedSquares: string[];
   highlightKind: 'legal' | 'last-move' | 'check' | null;
   selectedSquare: string | null;
@@ -15,6 +16,7 @@ export const boardModule: Module<BoardState, RootState> = {
   state: (): BoardState => ({
     theme: 'classic',
     animationSpeed: 'normal',
+    battleMode: 'classic',
     highlightedSquares: [],
     highlightKind: null,
     selectedSquare: null,
@@ -25,6 +27,9 @@ export const boardModule: Module<BoardState, RootState> = {
     },
     setAnimationSpeed(state, s: AnimationSpeed): void {
       state.animationSpeed = s;
+    },
+    setBattleMode(state, m: BattleMode): void {
+      state.battleMode = m;
     },
     setHighlights(
       state,

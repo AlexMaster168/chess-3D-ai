@@ -11,11 +11,17 @@ export type {
   AnimationSpeed,
   HighlightKind,
   EffectKind,
+  BattleMode,
   Move,
-  BoardEvents
+  BoardEvents,
+  MoveValidator
 } from './types.js';
 
 export { STARTING_FEN } from './util/fen.js';
+
+// Audio system exports
+export { AudioEngine, getAudioEngine, type SoundEffect } from './audio/AudioEngine.js';
+export { getBattleSounds, type SoundCue } from './audio/BattleSoundMap.js';
 
 import type { ChessBoard3D } from './types.js';
 import { BoardController } from './BoardController.js';

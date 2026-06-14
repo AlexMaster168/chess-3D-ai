@@ -8,8 +8,10 @@ import EvalBar from '@/components/EvalBar.vue';
 import CapturedPieces from '@/components/CapturedPieces.vue';
 import Timers from '@/components/Timers.vue';
 import PromotionDialog from '@/components/PromotionDialog.vue';
-import type { StructuredMove } from '@/types/shared';
+import MusicControl from '@/components/MusicControl.vue';
+import type { StructuredMove, MoveValidator } from '@/types/shared';
 import { Chess } from 'chess.js';
+import { t } from '@/i18n';
 
 const store = useStore();
 const router = useRouter();
@@ -21,13 +23,41 @@ const ai = computed(() => store.state.ai);
 const pendingPromotion = ref<StructuredMove | null>(null);
 const showPromotion = ref(false);
 
+// Move validator for the 3D board - validates moves against chess.js
+// Uses a function-based approach to always get fresh state
+const moveValidator = {
+  isLegal(from: string, to: string): boolean {
+    try {
+      const fen = store.state.game.fen;
+      const chess = new Chess(fen);
+      const moves = chess.moves({ square: from as never, verbose: true });
+      return moves.some(m => m.to === to);
+    } catch {
+      return false;
+    }
+  },
+  getLegalMoves(square: string): string[] {
+    try {
+      const fen = store.state.game.fen;
+      const chess = new Chess(fen);
+      const moves = chess.moves({ square: square as never, verbose: true });
+      return moves.map(m => m.to);
+    } catch {
+      return [];
+    }
+  }
+};
+
 // Guard: if no active game, send back to lobby.
 onMounted(() => {
   if (game.value.status === 'idle') {
     void router.replace('/');
   } else {
-    void store.dispatch('ai/init');
-    triggerAiIfNeeded();
+    // Only initialize AI in AI mode
+    if (game.value.gameMode === 'ai') {
+      void store.dispatch('ai/init');
+      triggerAiIfNeeded();
+    }
   }
 });
 
@@ -46,7 +76,8 @@ async function attemptMove(m: StructuredMove): Promise<void> {
   ) {
     return;
   }
-  if (game.value.turn !== game.value.playerColor) return;
+  // In hotseat mode, both players can move. In AI mode, only the player's turn.
+  if (game.value.gameMode === 'ai' && game.value.turn !== game.value.playerColor) return;
   if (isPromotion(m) && !m.promotion) {
     pendingPromotion.value = m;
     showPromotion.value = true;
@@ -94,7 +125,10 @@ async function afterMove(): Promise<void> {
     await store.dispatch('game/saveToBackend');
     return;
   }
-  triggerAiIfNeeded();
+  // Only trigger AI in AI mode
+  if (game.value.gameMode === 'ai') {
+    triggerAiIfNeeded();
+  }
 }
 
 async function triggerAiIfNeeded(): Promise<void> {
@@ -128,7 +162,6 @@ async function triggerAiIfNeeded(): Promise<void> {
 }
 
 function onSquareClick(sq: string): void {
-  // Show legal-move highlights on selection (fallback board handles selection itself).
   const moves = store.getters['game/legalMovesFrom'](sq) as string[];
   if (moves.length === 0) {
     store.commit('board/clearHighlights');
@@ -138,6 +171,42 @@ function onSquareClick(sq: string): void {
     squares: moves,
     kind: 'legal',
   });
+}
+
+// Confirm flow
+const pendingMove = ref<StructuredMove | null>(null);
+const showConfirm = ref(false);
+
+function onMoveSelected(m: StructuredMove): void {
+  pendingMove.value = m;
+  showConfirm.value = true;
+}
+
+function confirmMove(): void {
+  if (!pendingMove.value) return;
+  void attemptMove(pendingMove.value);
+  pendingMove.value = null;
+  showConfirm.value = false;
+}
+
+function cancelMove(): void {
+  pendingMove.value = null;
+  showConfirm.value = false;
+  store.commit('board/clearHighlights');
+}
+
+function undoMove(): void {
+  if (game.value.moveHistory.length === 0) return;
+  if (game.value.gameMode === 'ai') {
+    if (game.value.turn === game.value.playerColor && game.value.moveHistory.length >= 2) {
+      store.dispatch('game/undo');
+      store.dispatch('game/undo');
+    } else if (game.value.turn !== game.value.playerColor && game.value.moveHistory.length >= 1) {
+      store.dispatch('game/undo');
+    }
+  } else {
+    store.dispatch('game/undo');
+  }
 }
 
 function resign(): void {
@@ -173,30 +242,48 @@ watch(
         :animation-speed="board.animationSpeed"
         :highlights="board.highlightedSquares"
         :highlight-kind="board.highlightKind"
-        @move="attemptMove"
+        :battle-mode="board.battleMode"
+        :move-validator="moveValidator"
+        @move="onMoveSelected"
         @square-click="onSquareClick"
       />
-      <div v-if="ai.thinking" class="thinking">AI thinking…</div>
+      <div class="move-confirm" v-if="showConfirm && pendingMove">
+        <span class="confirm-text">
+          {{ pendingMove.from }} → {{ pendingMove.to }}
+        </span>
+        <button class="confirm-btn yes" @click="confirmMove">{{ t('game.confirm') }}</button>
+        <button class="confirm-btn no" @click="cancelMove">{{ t('game.cancel') }}</button>
+      </div>
+      <div class="turn-indicator" v-if="game.status === 'playing' || game.status === 'check'">
+        <span :class="['turn-dot', game.turn]"></span>
+        <span>{{ game.turn === 'w' ? t('game.whiteToMove') : t('game.blackToMove') }}</span>
+        <span v-if="game.gameMode === 'hotseat'" class="hotseat-badge">Hotseat</span>
+      </div>
+      <div v-if="ai.thinking" class="thinking">{{ t('game.thinking') }}</div>
       <div v-if="game.error" class="error">{{ game.error }}</div>
       <div v-if="store.getters['game/isGameOver']" class="result">
-        Result: <strong>{{ game.result }}</strong>
-        <button class="link" @click="router.push('/')">Back to lobby</button>
+        {{ t('game.result') }}: <strong>{{ game.result }}</strong>
+        <button class="link" @click="router.push('/')">{{ t('game.backToLobby') }}</button>
       </div>
     </div>
     <aside class="right">
+      <MusicControl />
       <Timers />
       <CapturedPieces />
       <MoveList />
       <div class="actions">
+        <button @click="undoMove" :disabled="store.getters['game/isGameOver'] || game.moveHistory.length === 0">
+          {{ t('game.undo') }}
+        </button>
         <button @click="offerDraw" :disabled="store.getters['game/isGameOver']">
-          Offer draw
+          {{ t('game.offerDraw') }}
         </button>
         <button
           class="danger"
           @click="resign"
           :disabled="store.getters['game/isGameOver']"
         >
-          Resign
+          {{ t('game.resign') }}
         </button>
       </div>
     </aside>
@@ -235,6 +322,67 @@ watch(
 .thinking {
   color: var(--text-muted);
   font-size: 0.85rem;
+}
+.move-confirm {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--surface-1);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+}
+.confirm-text {
+  font-family: monospace;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+.confirm-btn {
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+.confirm-btn.yes {
+  background: #2d5a2d;
+  color: #aaffaa;
+  border-color: #4a8a4a;
+}
+.confirm-btn.no {
+  background: #5a2d2d;
+  color: #ffaaaa;
+  border-color: #8a4a4a;
+}
+.turn-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--surface-1);
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+.turn-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+}
+.turn-dot.w {
+  background: #fff;
+}
+.turn-dot.b {
+  background: #333;
+}
+.hotseat-badge {
+  margin-left: auto;
+  padding: 0.15rem 0.5rem;
+  background: var(--accent);
+  color: #061018;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
 }
 .error {
   background: #3a1e1e;

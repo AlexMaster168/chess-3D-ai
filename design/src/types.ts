@@ -20,6 +20,13 @@ export interface BoardEvents {
   animationEnd: (kind: string) => void;
 }
 
+export type BattleMode = 'classic' | 'battle-chess';
+
+export interface MoveValidator {
+  isLegal(from: string, to: string): boolean;
+  getLegalMoves(square: string): string[];
+}
+
 export interface ChessBoard3D {
   mount(container: HTMLElement): Promise<void>;
   unmount(): void;
@@ -29,6 +36,10 @@ export interface ChessBoard3D {
   setTheme(theme: ThemeName): void;
   on<E extends keyof BoardEvents>(event: E, cb: BoardEvents[E]): void;
   playEffect(kind: EffectKind): void;
+  setBattleMode(mode: BattleMode): void;
+  setMoveValidator(validator: MoveValidator | null): void;
+  flipBoard(): void;
+  isFlipped(): boolean;
 }
 
 export type PieceColor = 'w' | 'b';

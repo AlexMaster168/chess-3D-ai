@@ -7,7 +7,9 @@ import type {
   HighlightKind,
   EffectKind,
   BoardEvents,
-  PieceSpec
+  PieceSpec,
+  BattleMode,
+  MoveValidator
 } from './types.js';
 import { Emitter } from './util/events.js';
 import { parseFen } from './util/fen.js';
@@ -18,6 +20,8 @@ import { Piece } from './pieces/Piece.js';
 import { buildTheme, pieceMaterialFor, type ThemeMaterials } from './themes/themes.js';
 import { ParticleSystem } from './effects/Particles.js';
 import { Animator } from './animations/Animator.js';
+import { BattleSystem, type BattleSystemDeps } from './battle/BattleSystem.js';
+import { getAudioEngine, type AudioEngine } from './audio/AudioEngine.js';
 
 /**
  * Concrete ChessBoard3D implementation. Public surface matches SHARED_CONTRACTS.md §1.
@@ -29,10 +33,14 @@ export class BoardController implements ChessBoard3D {
   private theme: ThemeMaterials = buildTheme('classic');
   private themeName: ThemeName = 'classic';
   private animator?: Animator;
+  private battleSystem?: BattleSystem;
   private particles?: ParticleSystem;
+  private audio?: AudioEngine;
   private emitter = new Emitter<BoardEvents>();
   private pieces: Map<string, Piece> = new Map(); // square -> piece
   private animationSpeed: AnimationSpeed = 'normal';
+  private battleMode: BattleMode = 'classic';
+  private moveValidator: MoveValidator | null = null;
   private rafId: number | null = null;
   private clock = new THREE.Clock();
   private resizeObs?: ResizeObserver;
@@ -63,6 +71,10 @@ export class BoardController implements ChessBoard3D {
     const particles = new ParticleSystem(handles.scene);
     this.particles = particles;
 
+    // Initialize audio engine
+    this.audio = getAudioEngine();
+    await this.audio.init();
+
     this.animator = new Animator({
       camera: handles.camera,
       cameraTarget: handles.controls.target,
@@ -71,6 +83,16 @@ export class BoardController implements ChessBoard3D {
       background: this.theme.background
     });
     this.animator.setSpeed(this.animationSpeed);
+
+    this.battleSystem = new BattleSystem({
+      scene: handles.scene,
+      camera: handles.camera,
+      cameraTarget: handles.controls.target,
+      renderer: handles.renderer,
+      spawnBurst: (x, y, z, count, opts) => this.particles?.spawnBurst(x, y, z, count, opts),
+      spawnShockwave: (x, y, z, opts) => this.particles?.spawnShockwave(x, y, z, opts),
+      audio: this.audio
+    });
 
     this.bindDomEvents();
     this.installResizeObserver();
@@ -94,15 +116,19 @@ export class BoardController implements ChessBoard3D {
     this.pointerDownPos = null;
 
     for (const piece of this.pieces.values()) {
+      this.battleSystem?.removePieceParts(piece);
       this.handles?.scene.remove(piece.group);
     }
     this.pieces.clear();
     this.particles?.dispose();
     this.particles = undefined;
+    this.audio?.dispose();
+    this.audio = undefined;
     this.handles?.dispose();
     this.handles = undefined;
     this.board = undefined;
     this.animator = undefined;
+    this.battleSystem = undefined;
     this.container = undefined;
     this.emitter.clear();
     this.selectedSquare = null;
@@ -145,6 +171,23 @@ export class BoardController implements ChessBoard3D {
     }
   }
 
+  setBattleMode(mode: BattleMode): void {
+    this.battleMode = mode;
+  }
+
+  setMoveValidator(validator: MoveValidator | null): void {
+    this.moveValidator = validator;
+  }
+
+  flipBoard(): void {
+    this.board?.flipBoard();
+    this.selectedSquare = null;
+  }
+
+  isFlipped(): boolean {
+    return this.board?.['flipped'] ?? false;
+  }
+
   on<E extends keyof BoardEvents>(event: E, cb: BoardEvents[E]): void {
     this.emitter.on(event, cb);
   }
@@ -155,10 +198,12 @@ export class BoardController implements ChessBoard3D {
       case 'capture': {
         // Burst at board centre if caller has no spatial context.
         this.particles?.spawnBurst(0, 0.4, 0, 50);
+        this.audio?.play('impact_heavy');
         this.emitter.emit('animationEnd', 'capture');
         return;
       }
       case 'check': {
+        this.audio?.play('check');
         const sq = this.lastSideInCheck === 'w' ? this.whiteKingSquare : this.blackKingSquare;
         if (sq) {
           const king = this.pieces.get(sq);
@@ -171,10 +216,12 @@ export class BoardController implements ChessBoard3D {
         return;
       }
       case 'checkmate': {
+        this.audio?.play('checkmate');
         this.animator.checkmate().then(() => this.emitter.emit('animationEnd', 'checkmate'));
         return;
       }
       case 'castle': {
+        this.audio?.play('castle');
         // Without explicit squares we can only emit completion; setBoardState will handle visuals.
         this.emitter.emit('animationEnd', 'castle');
         return;
@@ -256,11 +303,30 @@ export class BoardController implements ChessBoard3D {
         const isCapture = !!victim && victim.id !== candidate.id && !usedExisting.has(victim.id);
         if (isCapture && victim) {
           capturedInline.add(victim.id);
-          this.animator.capture(victim, () => this.handles?.scene.remove(victim.group)).then(() =>
-            this.emitter.emit('animationEnd', 'capture')
-          );
+          if (this.battleMode === 'battle-chess' && this.battleSystem) {
+            // In battle mode: wait for battle to complete, then glide attacker to target
+            this.battleSystem.playBattle({
+              attacker: candidate,
+              defender: victim,
+              speedMul: this.animator?.getSpeedMul() ?? 1,
+              onCaptureComplete: () => {
+                this.handles?.scene.remove(victim.group);
+                // Now glide attacker to the captured piece's square
+                this.animator?.glide(candidate, sq).then(() => {
+                  this.emitter.emit('animationEnd', 'move');
+                  this.emitter.emit('animationEnd', 'capture');
+                });
+              }
+            });
+          } else {
+            this.animator.capture(victim, () => this.handles?.scene.remove(victim.group)).then(() =>
+              this.emitter.emit('animationEnd', 'capture')
+            );
+            this.animator.glide(candidate, sq).then(() => this.emitter.emit('animationEnd', 'move'));
+          }
+        } else {
+          this.animator.glide(candidate, sq).then(() => this.emitter.emit('animationEnd', 'move'));
         }
-        this.animator.glide(candidate, sq).then(() => this.emitter.emit('animationEnd', 'move'));
       } else {
         candidate.snapToSquare(sq);
       }
@@ -343,6 +409,13 @@ export class BoardController implements ChessBoard3D {
       } else {
         const from = this.selectedSquare;
         this.selectedSquare = null;
+        // Validate move if validator is set
+        if (this.moveValidator) {
+          if (!this.moveValidator.isLegal(from, sq)) {
+            // Illegal move - don't emit, clear selection
+            return;
+          }
+        }
         this.emitter.emit('move', { from, to: sq });
       }
     };

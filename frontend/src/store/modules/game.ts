@@ -6,6 +6,7 @@ import type {
   Difficulty,
   GameResult,
   StructuredMove,
+  GameMode,
 } from '@/types/shared';
 import { api } from '@/services/api';
 
@@ -29,6 +30,7 @@ export interface GameState {
   lastMove: StructuredMove | null;
   playerColor: Color;
   aiDifficulty: Difficulty;
+  gameMode: GameMode;
   startedAt: number | null;
   endedAt: number | null;
   thinking: boolean;
@@ -72,13 +74,14 @@ export const gameModule: Module<GameState, RootState> = {
     lastMove: null,
     playerColor: 'w',
     aiDifficulty: 'intermediate',
+    gameMode: 'ai',
     startedAt: null,
     endedAt: null,
     thinking: false,
     error: null,
   }),
   mutations: {
-    reset(state, payload: { color: Color; difficulty: Difficulty }): void {
+    reset(state, payload: { color: Color; difficulty: Difficulty; mode: GameMode }): void {
       chess = new Chess();
       state.fen = chess.fen();
       state.pgn = '';
@@ -90,6 +93,7 @@ export const gameModule: Module<GameState, RootState> = {
       state.lastMove = null;
       state.playerColor = payload.color;
       state.aiDifficulty = payload.difficulty;
+      state.gameMode = payload.mode;
       state.startedAt = Date.now();
       state.endedAt = null;
       state.thinking = false;
@@ -127,11 +131,25 @@ export const gameModule: Module<GameState, RootState> = {
       state.result = '1/2-1/2';
       state.endedAt = Date.now();
     },
+    removeLastMove(state): void {
+      state.moveHistory.pop();
+      state.fenHistory.pop();
+      state.fen = chess.fen();
+      state.pgn = chess.pgn();
+      state.turn = chess.turn();
+      state.lastMove = state.moveHistory.length > 0
+        ? { from: state.moveHistory[state.moveHistory.length - 1].from, to: state.moveHistory[state.moveHistory.length - 1].to }
+        : null;
+      const s = recomputeStatus(chess);
+      state.status = s.status;
+      state.result = s.result;
+      state.endedAt = null;
+    },
   },
   actions: {
     newGame(
       { commit },
-      payload: { color: Color; difficulty: Difficulty },
+      payload: { color: Color; difficulty: Difficulty; mode: GameMode },
     ): void {
       commit('reset', payload);
     },
@@ -166,6 +184,14 @@ export const gameModule: Module<GameState, RootState> = {
     draw({ commit }): void {
       commit('agreeDraw');
     },
+    undo({ commit, state }): boolean {
+      if (state.moveHistory.length === 0) return false;
+      // Go back one move in chess.js
+      chess.undo();
+      // Remove last move from history via mutation
+      commit('removeLastMove');
+      return true;
+    },
     async saveToBackend({ state, rootState }): Promise<void> {
       if (!state.result) return;
       const player = rootState.player.current;
@@ -195,7 +221,11 @@ export const gameModule: Module<GameState, RootState> = {
       const moves = chess.moves({ square: square as never, verbose: true });
       return moves.map((m) => m.to);
     },
-    isPlayerTurn: (state): boolean => state.turn === state.playerColor,
+    isPlayerTurn: (state): boolean => {
+      // In hotseat mode, both players can move
+      if (state.gameMode === 'hotseat') return true;
+      return state.turn === state.playerColor;
+    },
     isGameOver: (state): boolean =>
       state.status === 'checkmate' ||
       state.status === 'stalemate' ||

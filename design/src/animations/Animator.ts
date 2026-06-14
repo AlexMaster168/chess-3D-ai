@@ -4,6 +4,7 @@ import { Piece } from '../pieces/Piece.js';
 import { squareToWorld } from '../util/notation.js';
 import type { AnimationSpeed } from '../types.js';
 import type { ParticleSystem } from '../effects/Particles.js';
+import { getAudioEngine, type AudioEngine } from '../audio/AudioEngine.js';
 
 export const SPEED_TABLE: Record<AnimationSpeed, number> = {
   slow: 1.4,
@@ -23,13 +24,19 @@ export interface AnimatorDeps {
 export class Animator {
   private deps: AnimatorDeps;
   private speedMul: number = SPEED_TABLE.normal;
+  private audio: AudioEngine;
 
   constructor(deps: AnimatorDeps) {
     this.deps = deps;
+    this.audio = getAudioEngine();
   }
 
   setSpeed(speed: AnimationSpeed): void {
     this.speedMul = SPEED_TABLE[speed];
+  }
+
+  getSpeedMul(): number {
+    return this.speedMul;
   }
 
   /** Glide a piece along an arc to the destination square. */
@@ -41,6 +48,7 @@ export class Animator {
     const duration = 0.45 * this.speedMul;
 
     piece.square = toSquare;
+    this.audio.play('move', 0.3);
 
     return new Promise<void>(resolve => {
       const obj = { t: 0 };
@@ -75,6 +83,9 @@ export class Animator {
     const px = target.group.position.x;
     const pz = target.group.position.z;
     const py = target.approxHeight * 0.5;
+
+    // Play capture sound
+    this.audio.play('impact_heavy');
 
     // Impact effects fire immediately so the visual hit lands on contact.
     this.deps.particles.spawnShockwave(px, 0.04, pz, { color: 0xffe4a8, finalScale: 7 });
@@ -263,6 +274,7 @@ export class Animator {
   promotion(piece: Piece): Promise<void> {
     const liftDuration = 0.35 * this.speedMul;
     const flashDuration = 0.25 * this.speedMul;
+    this.audio.play('promote');
     return new Promise<void>(resolve => {
       const tl = gsap.timeline({ onComplete: () => resolve() });
       tl.to(piece.group.position, { y: 1.2, duration: liftDuration, ease: 'power2.out' });
